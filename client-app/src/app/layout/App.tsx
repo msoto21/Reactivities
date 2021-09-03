@@ -1,19 +1,28 @@
 import React, { Fragment, useEffect, useState } from 'react';
-import axios from 'axios';
 import { Container } from 'semantic-ui-react';
 import { Activity } from '../models/activity';
 import NavBar from './NavBar';
 import ActivityDashboard from '../../features/activities/dashboard/ActivityDashboard';
 import {v4 as uuid} from 'uuid';
+import agent from '../api/agent';
+import LoadingComponent from './LoadingComponent';
 
 function App() {
   const [activities, setActivities] = useState<Activity[]>([]); // activities is the variable to store our state, and setActities is a function to set the state.
   const [selectedActivity, setSelectedActitivy] = useState<Activity | undefined>(undefined); // In the useState we're saying that the it can be either an Activity or undefined and its initial state is undefined.
   const [editMode, setEditMode] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    axios.get<Activity[]>('http://localhost:5000/api/activities').then(response => {
-      setActivities(response.data);
+    agent.Activities.list().then(response => {  // axios.get<Activity[]>('http://localhost:5000/api/activities').then(response => {
+      let activities: Activity[] = [];
+      response.forEach(activity => {
+        activity.date = activity.date.split('T')[0];
+        activities.push(activity);
+      })
+      setActivities(response); // setActivities(response.data);
+      setLoading(false);
     })
   }, []) // this is empty array of dependencies which we don't have at this satege, and will prevent the code before the comma to repeat indefinitely given the change of state.
 
@@ -35,16 +44,34 @@ function App() {
   }
 
   function HandleCreateOrEditActivity(activity: Activity) {
-    activity.id 
-      ? setActivities([...activities.filter(x => x.id !== activity.id), activity])
-      : setActivities([...activities, {...activity, id: uuid()}]);
-    setEditMode(false);
-    setSelectedActitivy(activity);
+    setSubmitting(true);
+    if (activity.id) {
+      agent.Activities.update(activity).then(() => {
+        setActivities([...activities.filter(x => x.id !== activity.id), activity])
+        setSelectedActitivy(activity);
+        setEditMode(false);
+        setSubmitting(false);
+      })
+    } else {
+        activity.id = uuid();
+        agent.Activities.create(activity).then(() => {
+        setActivities([...activities, activity]);
+        setSelectedActitivy(activity);
+        setEditMode(false);
+        setSubmitting(false);
+      })
+    }
   }
 
   function handleDeleteActivity(id: string) {
-    setActivities([...activities.filter(x => x.id !== id)]);
+    setSubmitting(true);
+    agent.Activities.delete(id).then(() => {
+      setActivities([...activities.filter(x => x.id !== id)]);
+      setSubmitting(false);
+    })
   }
+
+  if (loading) return <LoadingComponent content='Loading app' />
 
   return (
     <Fragment>
@@ -60,6 +87,7 @@ function App() {
           closeForm={handleFormClose}
           createOrEdit={HandleCreateOrEditActivity}
           deleteActivity={handleDeleteActivity}
+          submitting={submitting}
           />
       </Container>
     </Fragment>
